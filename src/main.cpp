@@ -1,32 +1,56 @@
+#define TIMER_INTERRUPT_DEBUG 0
+#define _TIMERINTERRUPT_LOGLEVEL_ 2
+
 #include <Arduino.h>
 #include <SD.h>
 #include <Adafruit_NAU7802.h>
 #include <Wire.h>
+#include "TeensyTimerInterrupt.h"
 
 const int ledPin = 13;
 const int chipSelect = BUILTIN_SDCARD;
 const int buzzer = 2;
-const int button = 3;
+const int button = 5;
+const int igniter = 6;
 
 Adafruit_NAU7802 nau;
+
+#define TIMER0_INTERVAL_MS 50L
+#define TIMER0_DURATION_MS 5000L
+
+TeensyTimer ITimer0(TEENSY_TIMER_1);
+
+bool SDErrorFlag = false;
+bool dataCollectionActive = false;
 
 // create a function to write data to an sd card on teensy 4.1
 void writeSDCard(String data)
 {
-  // open the file for writing
-  File dataFile = SD.open("datalog.txt", FILE_WRITE);
+  if (dataCollectionActive)
+  {
+    // open the file for writing
+    File dataFile = SD.open("datalog.txt", FILE_WRITE);
+    // if the file is available, write to it:
+    if (dataFile)
+    {
+      dataFile.println(data);
+      dataFile.close();
+    }
+    // if the file isn't open, pop up an error:
+    else
+    {
+      Serial.println("error opening datalog.txt");
+      SDErrorFlag = true;
+    }
+  }
+}
 
-  // if the file is available, write to it:
-  if (dataFile)
-  {
-    dataFile.println(data);
-    dataFile.close();
-  }
-  // if the file isn't open, pop up an error:
-  else
-  {
-    Serial.println("error opening datalog.txt");
-  }
+void timer(void)
+{
+  int32_t val = nau.read();
+  Serial.print("Read ");
+  Serial.println(val);
+  writeSDCard(String(val));
 }
 
 // create a function that returns data from a load cell
@@ -35,10 +59,14 @@ void setup()
 {
 
   pinMode(buzzer, OUTPUT);
-  pinMode(button, INPUT);
+  pinMode(button, INPUT_PULLUP);
+  pinMode(igniter, OUTPUT);
+
+  digitalWrite(igniter, LOW);
 
   SD.begin(BUILTIN_SDCARD);
   Serial.begin(115200);
+
   if (!nau.begin())
   {
     Serial.println("Failed to find NAU7802");
@@ -149,25 +177,46 @@ void setup()
     delay(1000);
   }
   Serial.println("Calibrated system offset");
+
+  tone(buzzer, 200, 200);
 }
 
 void loop()
 {
-  // digitalWrite(ledPin, HIGH); // turn the LED on
-  // delay(1000);                // wait for 1 second
-  // digitalWrite(ledPin, LOW);  // turn the LED off
-  // delay(1000);                // wait for 1 second
-  // Serial.println("Testing SD Card Write to datalog.tx");
-  // writeSDCard("Hello World");
+  if (digitalRead(button) == LOW)
+  {
+    dataCollectionActive = true;
 
-  while (! nau.available()) {
-    delay(1);
+    if (ITimer0.attachInterruptInterval(TIMER0_INTERVAL_MS * 1000, timer))
+    {
+      Serial.print(F("Starting ITimer0 OK, millis() = "));
+      Serial.println(millis());
+    }
+    else
+      tone(buzzer, 800, 500);
+
+    for (int i = 10; i > 0; i--)
+    {
+      tone(buzzer, 200, 100);
+      delay(i * 100);
+    }
+    tone(buzzer, 200, 800);
+    delay(800);
+    // Ignite
+    if (SDErrorFlag)
+    {
+      tone(buzzer, 2000, 1000);
+      delay(2000);
+    }
+    else
+    {
+      Serial.println("Igniting");
+      digitalWrite(igniter, HIGH);
+      delay(10000);
+      digitalWrite(igniter, LOW);
+    }
+    // End test
+    dataCollectionActive = false;
+    tone(buzzer, 200, 800);
   }
-  int32_t val = nau.read();
-  Serial.print("Read "); Serial.println(val);
-
-  tone(buzzer, 200, 500);
-
-
-  // scan the i2c bus for devices
 }

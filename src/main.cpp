@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <SD.h>
-
+#include <Adafruit_I2CDevice.h>
+#include <Adafruit_NAU7802.h>
 
 const int ledPin = 13;
 const int chipSelect = BUILTIN_SDCARD;

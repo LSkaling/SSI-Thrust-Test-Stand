@@ -210,6 +210,7 @@ void loop()
     }
     else
     {
+      writeSDCard("Ignition");
       Serial.println("Igniting");
       digitalWrite(igniter, HIGH);
       delay(10000);
